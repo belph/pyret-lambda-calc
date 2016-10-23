@@ -1,7 +1,6 @@
 PYRET=pyret-lang
 ALL_PHASES=phase0 phaseA phaseB phaseC
 SHELL=/usr/bin/env bash
-PYRET_DEPS=$(PYRET) $(PYRET)/Makefile
 NODE_PATH:=$(NODE_PATH):$(PYRET)/node_modules
 NODE=node -max-old-space-size=8192
 BUILD=build
@@ -46,25 +45,18 @@ clean:
 phase0: build-program
 phase0: PHASE=phase0
 phase0: COMPILED=$(BUILD)/compiled-phase0
-phase0: PYRET_COMPILER=$(PYRET)/build/phase0/pyret.jarr
 
 phaseA: build-program
 phaseA: PHASE=phaseA
 phaseA: COMPILED=$(BUILD)/compiled-phaseA
-phaseA: PYRET_DEPS += $(PYRET_COMPILER_SRCS)
-phaseA: PYRET_COMPILER=$(PYRET)/build/phaseA/pyret.jarr
 
 phaseB: build-program
 phaseB: PHASE=phaseB
 phaseB: COMPILED=$(BUILD)/compiled-phaseB
-phaseB: PYRET_DEPS += $(PYRET_COMPILER_SRCS) $(PYRET)/build/phaseA/pyret.jarr
-phaseB: PYRET_COMPILER=$(PYRET)/build/phaseB/pyret.jarr
 
 phaseC: build-program
 phaseC: PHASE=phaseC
 phaseC: COMPILED=$(BUILD)/compiled-phaseC
-phaseC: PYRET_DEPS += $(PYRET_COMPILER_SRCS) $(PYRET)/build/phaseA/pyret.jarr $(PYRET)/build/phaseB/pyret.jarr
-phaseC: PYRET_COMPILER=$(PYRET)/build/phaseC/pyret.jarr
 
 $(PYRET)/build/phaseA/js:
 	@echo Building phaseA dependencies in pyret-lang
@@ -75,12 +67,6 @@ build-deps: | $(PYRET)/build/phaseA/js
 
 build-program: build-deps runner
 
-$(PYRET)/build/%/pyret.jarr: $(PYRET_DEPS)
-	@:$(call check_defined, PHASE)
-	$(if $(filter-out phase0, $(PHASE)), \
-	  $(shell cd $(PYRET) && make $(PHASE)), \
-	  $(echo Using prebuilt compiler))
-
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -88,17 +74,18 @@ $(BUILD)/compiled-%: $(BUILD)
 	mkdir -p $@
 
 runner:
-	@:$(call check_defined, PHASE, PYRET_COMPILER, COMPILED)
+	@:$(call check_defined, PHASE, COMPILED)
 	make $(if $(filter $(PHASE), $(NEWEST_PHASE)),,-B) PHASE=$(PHASE) \
 	  COMPILED=$(COMPILED) \
 	  $(BUILD)/$(RUNNER).jarr
 
-$(BUILD)/$(RUNNER).jarr: $(ARR_SRCS) $(COMPILED) | $(PYRET_COMPILER)
-	@:$(call check_defined, PHASE, PYRET_COMPILER, COMPILED)
+$(BUILD)/$(RUNNER).jarr: $(ARR_SRCS) $(COMPILED)
+	@:$(call check_defined, PHASE, COMPILED)
+	mkdir -p $(BUILD)/requirejs-$(PHASE)
 	$(NODE) $(PYRET)/build/$(PHASE)/pyret.jarr \
 	  --builtin-arr-dir $(PYRET)/src/arr/trove \
 	  --builtin-js-dir $(PYRET)/src/js/trove \
-	  --require-config <(tools/generate-config.sh $(COMPILED) $(PYRET))  \
+	  --require-config <(tools/generate-config.sh $(BUILD)/requirejs-$(PHASE) $(PYRET))  \
 	  --standalone-file $(PYRET)/src/js/base/handalone.js \
 	  --compiled-dir $(COMPILED) \
 	  --build-runnable $(ARR_SRC)/$(RUNNER).arr \
