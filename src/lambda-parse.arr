@@ -1,6 +1,5 @@
 provide *
 
-import s-exp as S
 import srcloc as SL
 import global as _
 import base as _
