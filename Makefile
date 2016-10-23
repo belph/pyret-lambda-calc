@@ -1,4 +1,5 @@
 PYRET=pyret-lang
+ALL_PHASES=phase0 phaseA phaseB phaseC
 SHELL=/usr/bin/env bash
 PYRET_DEPS=$(PYRET) $(PYRET)/Makefile
 NODE_PATH:=$(NODE_PATH):$(PYRET)/node_modules
@@ -9,6 +10,7 @@ RUNNER=run-lc
 PHASE=
 COMPILED=
 EXTRA_BUILD_DEPS=
+NEWEST_PHASE=$(shell tools/newest-phase.sh $(BUILD) $(ALL_PHASES))
 PYRET_COMPILER_SRCS=$(wildcard $(PYRET)/src/arr/compiler/*.arr) \
   $(wildcard $(PYRET)/src/arr/compiler/locators/*.arr) \
   $(wildcard $(PYRET)/src/js/trove/*.js) \
@@ -39,7 +41,7 @@ all:
 clean:
 	rm -r $(BUILD)/compiled-*
 
-.PHONY : phase0 phaseA phaseB phaseC build-program
+.PHONY : phase0 phaseA phaseB phaseC build-program runner
 
 phase0: build-program
 phase0: PHASE=phase0
@@ -71,12 +73,11 @@ $(PYRET)/build/phaseA/js:
 
 build-deps: | $(PYRET)/build/phaseA/js
 
-build-program: build-deps $(BUILD)/$(RUNNER).jarr $(BUILD)/$(RUNNER)
+build-program: build-deps runner
 
-$(PYRET)/build/%/pyret.jarr: | $(PYRET_DEPS)
-	@echo PHASE is \"$(PHASE)\"
+$(PYRET)/build/%/pyret.jarr: $(PYRET_DEPS)
 	@:$(call check_defined, PHASE)
-	$(if $(filter $(PHASE), phase0), \
+	$(if $(filter-out phase0, $(PHASE)), \
 	  $(shell cd $(PYRET) && make $(PHASE)), \
 	  $(echo Using prebuilt compiler))
 
@@ -86,7 +87,13 @@ $(BUILD):
 $(BUILD)/compiled-%: $(BUILD)
 	mkdir -p $@
 
-$(BUILD)/$(RUNNER).jarr: $(ARR_SRCS) $(PYRET_COMPILER) | $(COMPILED)
+runner:
+	@:$(call check_defined, PHASE, PYRET_COMPILER, COMPILED)
+	make $(if $(filter $(PHASE), $(NEWEST_PHASE)),,-B) PHASE=$(PHASE) \
+	  COMPILED=$(COMPILED) \
+	  $(BUILD)/$(RUNNER).jarr
+
+$(BUILD)/$(RUNNER).jarr: $(ARR_SRCS) $(COMPILED) | $(PYRET_COMPILER)
 	@:$(call check_defined, PHASE, PYRET_COMPILER, COMPILED)
 	$(NODE) $(PYRET)/build/$(PHASE)/pyret.jarr \
 	  --builtin-arr-dir $(PYRET)/src/arr/trove \
@@ -97,6 +104,7 @@ $(BUILD)/$(RUNNER).jarr: $(ARR_SRCS) $(PYRET_COMPILER) | $(COMPILED)
 	  --build-runnable $(ARR_SRC)/$(RUNNER).arr \
 	  -no-check-mode \
 	  --outfile $@
+	touch $(COMPILED)/built
 
 $(BUILD)/$(RUNNER): tools/$(RUNNER).template
 	cp $< $@
